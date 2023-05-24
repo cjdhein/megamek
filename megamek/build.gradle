@@ -46,7 +46,7 @@ dependencies {
 mainClassName = 'megamek.MegaMek'
 
 ext {
-    mmJvmOptions = ['-Xmx2048m', '--add-opens', 'java.base/java.util=ALL-UNNAMED', '--add-opens', 'java.base/java.util.concurrent=ALL-UNNAMED']
+    mmJvmOptions = ['-Xmx4096m', '--add-opens', 'java.base/java.util=ALL-UNNAMED', '--add-opens', 'java.base/java.util.concurrent=ALL-UNNAMED']
     data = 'data'
     unitFiles = "${data}/mechfiles"
     rats = "${data}/rat"

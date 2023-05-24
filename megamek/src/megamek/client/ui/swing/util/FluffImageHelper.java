@@ -85,6 +85,7 @@ public class FluffImageHelper {
         File fluff_image_file = findFluffImage(file, unit.getModel(), unit.getChassis());
         if (fluff_image_file != null) {
             fluff = new ImageIcon(fluff_image_file.toString()).getImage();
+            unit.getFluff().setMMLImagePath(fluff_image_file.getPath());
         }
         return fluff;
     }
