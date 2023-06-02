@@ -17,6 +17,7 @@ import megamek.MMConstants;
 import megamek.MegaMek;
 import megamek.client.bot.princess.BehaviorSettings;
 import megamek.client.ui.swing.GUIPreferences;
+import megamek.client.ui.swing.tooltip.UnitToolTip;
 import megamek.common.*;
 import megamek.common.Building.DemolitionCharge;
 import megamek.common.actions.*;
@@ -1631,6 +1632,8 @@ public class GameManager implements IGameManager {
     }
 
     private void bvReports(boolean checkBlind) {
+        List<Report> playerReport = new ArrayList<>();
+        List<Report> teamReport = new ArrayList<>();
         HashMap<Integer, BVCountHelper> teamsInfo = new HashMap<>();
 
         for (Team team : game.getTeams()) {
@@ -1668,7 +1671,7 @@ public class GameManager implements IGameManager {
             bvcPlayer.ejectedCrewKilledCount = player.getEjectedCrewKilledCount();
             bvcPlayer.ejectedCrewFledCount = player.getFledEjectedCrew();
 
-            bvReport(player.getColorForPlayer(), player.getId(), bvcPlayer, checkBlind);
+            playerReport.addAll(bvReport(player.getColorForPlayer(), player.getId(), bvcPlayer, checkBlind));
 
             BVCountHelper bvcTeam = teamsInfo.get(player.getTeam());
             bvcTeam.bv += bvcPlayer.bv;
@@ -1696,15 +1699,20 @@ public class GameManager implements IGameManager {
         if (!(checkBlind && doBlind() && suppressBlindBV())) {
             for (Map.Entry<Integer, BVCountHelper> e : teamsInfo.entrySet()) {
                 BVCountHelper bvc = e.getValue();
-                bvReport(Player.TEAM_NAMES[e.getKey()], Player.PLAYER_NONE, bvc, false);
+                teamReport.addAll(bvReport(Player.TEAM_NAMES[e.getKey()], Player.PLAYER_NONE, bvc, false));
             }
         }
+
+        vPhaseReport.addAll(teamReport);
+        vPhaseReport.addAll(playerReport);
     }
 
-    private void bvReport(String name, int playerID, BVCountHelper bvc, boolean checkBlind) {
+    private List<Report> bvReport(String name, int playerID, BVCountHelper bvc, boolean checkBlind) {
+        List<Report> result = new ArrayList<>();
+
         Report r = new Report(7016, Report.PUBLIC);
         r.add(name);
-        addReport(r);
+        result.add(r);
 
         r = new Report(7017, Report.PUBLIC);
         if (checkBlind && doBlind() && suppressBlindBV()) {
@@ -1716,7 +1724,7 @@ public class GameManager implements IGameManager {
         r.add(Double.toString(Math.round(((double) bvc.bv / bvc.bvInitial) * 10000.0) / 100.0));
         r.add(bvc.bvFled);
         r.indent(2);
-        addReport(r);
+        result.add(r);
 
         r = new Report(7018, Report.PUBLIC);
         if (checkBlind && doBlind() && suppressBlindBV()) {
@@ -1727,7 +1735,7 @@ public class GameManager implements IGameManager {
         r.add(bvc.unitsInitialCount);
         r.add(Double.toString(Math.round(((double) bvc.unitsCount / bvc.unitsInitialCount) * 10000.0) / 100.0));
         r.indent(2);
-        addReport(r);
+        result.add(r);
 
         if (bvc.unitsLightDamageCount + bvc.unitsModerateDamageCount + bvc.unitsHeavyDamageCount +
                 bvc.unitsCrippledCount + bvc.unitsDestroyedCount + bvc.unitsFledCount + bvc.unitsCrewEjectedCount +
@@ -1747,7 +1755,7 @@ public class GameManager implements IGameManager {
             r.add(bvc.unitsCrewTrappedCount > 0 ? r.warning(bvc.unitsCrewTrappedCount + "") : bvc.unitsCrewTrappedCount + "");
             r.add(bvc.unitsCrewKilledCount > 0 ? r.warning(bvc.unitsCrewKilledCount + "") : bvc.unitsCrewKilledCount + "");
             r.indent(2);
-            addReport(r);
+            result.add(r);
         }
 
         if (bvc.unitsCrewEjectedCount > 0) {
@@ -1762,11 +1770,39 @@ public class GameManager implements IGameManager {
             r.add(bvc.ejectedCrewKilledCount > 0 ? r.warning(bvc.ejectedCrewKilledCount + "") : bvc.ejectedCrewKilledCount + "");
             r.add(bvc.ejectedCrewFledCount > 0 ? r.warning(bvc.ejectedCrewFledCount + "") : bvc.ejectedCrewFledCount + "");
             r.indent(2);
-            addReport(r);
+            result.add(r);
         }
 
         // blank line
-        addReport(new Report(1210, Report.PUBLIC));
+        result.add(new Report(1210, Report.PUBLIC));
+
+        return result;
+    }
+
+    private void entityStatusReport() {
+        List<Report> reports = new ArrayList<>();
+        List<Entity> entities = game.getEntitiesVector().stream().filter(e -> e.isDeployed()).collect(Collectors.toList());
+        Comparator<Entity> comp = Comparator.comparing((Entity e) -> e.getOwner().getTeam());
+        comp = comp.thenComparing((Entity e) -> e.getOwner().getName());
+        comp = comp.thenComparing((Entity e) -> e.getDisplayName());
+        entities.sort(comp);
+
+        Report r = new Report(7600);
+        reports.add(r);
+
+        for (Entity e : entities) {
+            r = new Report(1231);
+            r.subject = e.getId();
+            r.addDesc(e);
+            r.add(UnitToolTip.getEntityTipReport(e).toString());
+            reports.add(r);
+
+            r = new Report(1230, Report.PUBLIC);
+            r.add("<BR>");
+            reports.add(r);
+        }
+
+        vPhaseReport.addAll(reports);
     }
 
     /**
@@ -1825,6 +1861,8 @@ public class GameManager implements IGameManager {
                 if (game.getBoard().inSpace()) {
                     checkForSpaceDeath();
                 }
+
+                bvReports(true);
 
                 LogManager.getLogger().info("Round " + game.getRoundCount() + " memory usage: " + MegaMek.getMemoryUsed());
                 break;
@@ -1951,6 +1989,8 @@ public class GameManager implements IGameManager {
                 resolveVeeINarcPodRemoval();
                 resolveFortify();
 
+                entityStatusReport();
+
                 // Moved this to the very end because it makes it difficult to see
                 // more important updates when you have 300+ messages of smoke filling
                 // whatever hex. Please don't move it above the other things again.
@@ -1967,8 +2007,6 @@ public class GameManager implements IGameManager {
                 break;
             case INITIATIVE_REPORT: {
                 autoSave();
-
-                bvReports(true);
             }
             case TARGETING_REPORT:
             case MOVEMENT_REPORT:
@@ -1986,6 +2024,7 @@ public class GameManager implements IGameManager {
             case VICTORY:
                 resetPlayersDone();
                 clearReports();
+                send(createAllReportsPacket());
                 prepareVictoryReport();
                 game.addReports(vPhaseReport);
                 // Before we send the full entities packet we need to loop
@@ -30044,6 +30083,13 @@ public class GameManager implements IGameManager {
      */
     private Packet createAllReportsPacket(Player p) {
         return new Packet(PacketCommand.SENDING_REPORTS_ALL, filterPastReports(getGame().getAllReports(), p));
+    }
+
+    /**
+     * Creates a packet containing all the round reports unfiltered
+     */
+    private Packet createAllReportsPacket() {
+        return new Packet(PacketCommand.SENDING_REPORTS_ALL, getGame().getAllReports());
     }
 
     /**
